@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocr_comparison"
+version = "0.1.0"
+description = "Compare OCR engines (Tesseract vs EasyOCR) with visualization and accuracy metrics"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Stella Biderman", email = "stellabiderman@gmail.com"}
+]
+keywords = ["ocr", "tesseract", "easyocr", "comparison", "visualization"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+
+dependencies = [
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+    "pytesseract>=0.3.10",
+    "easyocr>=1.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "opencv-python>=4.8.0",
+]
+
+[project.scripts]
+ocr-compare = "ocr_comparison.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/EleutherAI/ocr_comparison"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ocr_comparison", "ocr_comparison.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
