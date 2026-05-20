@@ -1,6 +1,6 @@
 """EasyOCR adapter."""
 
-import platform
+import warnings
 from typing import List, Tuple
 import numpy as np
 
@@ -26,11 +26,7 @@ class EasyOCRAdapter(BaseOCRAdapter):
         """
         super().__init__(**kwargs)
         self.languages = languages or ['en']
-        if gpu is None:
-            # MPS (Apple Silicon) doesn't support pin_memory, causing noisy warnings
-            self.gpu = platform.system() != 'Darwin'
-        else:
-            self.gpu = gpu
+        self.gpu = gpu if gpu is not None else True
 
     @property
     def name(self) -> str:
@@ -40,11 +36,16 @@ class EasyOCRAdapter(BaseOCRAdapter):
         """Initialize EasyOCR reader."""
         try:
             import easyocr
-            self._engine = easyocr.Reader(
-                self.languages,
-                gpu=self.gpu,
-                verbose=False
-            )
+            # Suppress pin_memory warning on MPS -- EasyOCR hardcodes
+            # pin_memory=True in its DataLoader, which is harmless but
+            # noisy on non-CUDA devices
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*pin_memory.*")
+                self._engine = easyocr.Reader(
+                    self.languages,
+                    gpu=self.gpu,
+                    verbose=False
+                )
         except ImportError:
             raise ImportError(
                 "easyocr is not installed. "
@@ -64,7 +65,9 @@ class EasyOCRAdapter(BaseOCRAdapter):
         """
         # EasyOCR readtext returns list of (bbox, text, confidence)
         # bbox is 4 corner points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-        results = self._engine.readtext(image)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*pin_memory.*")
+            results = self._engine.readtext(image)
 
         words = self._extract_words(results)
         image_size = (image.shape[1], image.shape[0])
