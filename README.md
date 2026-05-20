@@ -2,9 +2,7 @@
 
 Compare OCR engines visually. Run Tesseract and EasyOCR on the same image, then flip between results in an interactive viewer to see exactly what each engine detected.
 
-![Viewer demo: original document with bounding boxes (left) and extracted text map (right)](images/viewer_demo.png)
-
-*The viewer shows the original document with OCR bounding boxes (left) and a text map of what the engine extracted (right). Press I to toggle between views, arrow keys to switch engines.*
+![Viewer demo](images/viewer_demo.gif)
 
 ## Quick Start
 
