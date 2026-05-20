@@ -137,9 +137,26 @@ class OCRComparator:
             result_image = self.visualizer.side_by_side(image_path, results)
         elif mode == 'diff':
             result_image = self.visualizer.diff_view(image_path, results)
+        elif mode == 'textmap':
+            # Create side-by-side text maps for multiple engines
+            text_maps = []
+            for engine_name, result in results.items():
+                text_maps.append(
+                    self.visualizer.text_map(image_path, result, engine_name)
+                )
+            if len(text_maps) == 1:
+                result_image = text_maps[0]
+            else:
+                total_width = sum(img.width for img in text_maps)
+                max_height = max(img.height for img in text_maps)
+                result_image = Image.new('RGB', (total_width, max_height), (245, 245, 245))
+                x_offset = 0
+                for img in text_maps:
+                    result_image.paste(img, (x_offset, 0))
+                    x_offset += img.width
         else:
             raise ValueError(
-                f"Unknown mode: {mode}. Use 'overlay', 'side_by_side', or 'diff'"
+                f"Unknown mode: {mode}. Use 'overlay', 'side_by_side', 'diff', or 'textmap'"
             )
 
         # Save if output path provided
