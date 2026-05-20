@@ -2,7 +2,18 @@
 
 Compare OCR engines visually. Run Tesseract and EasyOCR on the same image, then flip between results in an interactive viewer to see exactly what each engine detected.
 
-![Viewer demo](images/viewer_demo.gif)
+<table>
+<tr>
+<td><img src="images/demo_pythia_header.gif" alt="Academic paper demo"></td>
+<td><img src="images/demo_math.gif" alt="Handwritten math demo"></td>
+<td><img src="images/demo_newspaper.gif" alt="Newspaper demo"></td>
+</tr>
+<tr>
+<td align="center"><em>Academic paper</em></td>
+<td align="center"><em>Handwritten math</em></td>
+<td align="center"><em>Newspaper</em></td>
+</tr>
+</table>
 
 ## Quick Start
 

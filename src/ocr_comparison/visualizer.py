@@ -422,18 +422,21 @@ class OCRVisualizer:
             font = self._get_font_for_size(font_size)
 
             # Shrink font if text overflows the bounding box width
-            text_bbox = draw.textbbox((0, 0), word.text, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
-            if text_width > bbox.width and bbox.width > 0:
-                font_size = max(6, int(font_size * bbox.width / text_width))
-                font = self._get_font_for_size(font_size)
+            try:
+                text_bbox = draw.textbbox((0, 0), word.text, font=font)
+                text_width = text_bbox[2] - text_bbox[0]
+                if text_width > bbox.width and bbox.width > 0:
+                    font_size = max(6, int(font_size * bbox.width / text_width))
+                    font = self._get_font_for_size(font_size)
 
-            draw.text(
-                (bbox.x, bbox.y),
-                word.text,
-                fill=colors['text'],
-                font=font,
-            )
+                draw.text(
+                    (bbox.x, bbox.y),
+                    word.text,
+                    fill=colors['text'],
+                    font=font,
+                )
+            except OSError:
+                continue
 
         return text_map_img
 

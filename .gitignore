@@ -40,6 +40,7 @@ outputs/
 images/*.png
 !images/viewer_demo.png
 !images/viewer_demo.gif
+!images/demo_*.gif
 !images/.gitkeep
 
 # Test artifacts
