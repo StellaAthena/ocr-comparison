@@ -246,10 +246,10 @@ def cmd_view(args):
                 image_paths = [line.strip() for line in f
                               if line.strip() and not line.startswith('#')]
         else:
-            # Just find PNG files (exclude _clean versions, viewer will find them)
+            # Just find PNG files (exclude _textmap versions, viewer will find them)
             all_pngs = sorted(input_path.glob("*.png"))
             image_paths = [str(p) for p in all_pngs
-                          if '_clean' not in p.stem and '_textmap' not in p.stem]
+                          if '_textmap' not in p.stem]
     elif input_path.is_file():
         if input_path.suffix == '.txt':
             # Manifest file
@@ -281,7 +281,7 @@ def cmd_view(args):
     num_engines = len(image_paths)
 
     print(f"\nLaunching viewer with {num_engines} engine(s)...")
-    print("Controls: ← → to switch, I to toggle boxes, Q to quit")
+    print("Controls: <- -> to switch, I to toggle original/text map, Q to quit")
 
     try:
         create_flip_viewer(image_paths, title=f"OCR Comparison - {input_path.name}")
