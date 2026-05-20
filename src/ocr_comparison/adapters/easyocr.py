@@ -1,5 +1,6 @@
 """EasyOCR adapter."""
 
+import platform
 from typing import List, Tuple
 import numpy as np
 
@@ -13,7 +14,7 @@ class EasyOCRAdapter(BaseOCRAdapter):
     def __init__(
         self,
         languages: List[str] = None,
-        gpu: bool = True,
+        gpu: bool = None,
         **kwargs
     ):
         """Initialize EasyOCR adapter.
@@ -25,7 +26,11 @@ class EasyOCRAdapter(BaseOCRAdapter):
         """
         super().__init__(**kwargs)
         self.languages = languages or ['en']
-        self.gpu = gpu
+        if gpu is None:
+            # MPS (Apple Silicon) doesn't support pin_memory, causing noisy warnings
+            self.gpu = platform.system() != 'Darwin'
+        else:
+            self.gpu = gpu
 
     @property
     def name(self) -> str:
