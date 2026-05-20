@@ -1,6 +1,6 @@
 # OCR Comparison System
 
-Compare OCR engines visually. Run Tesseract and EasyOCR on the same image, then flip between results in an interactive viewer to see exactly what each engine detected.
+Compare OCR engines visually. Run multiple engines on the same image, then flip between results in an interactive viewer to see exactly what each engine detected. Currently supports Tesseract and EasyOCR, with an extensible adapter architecture for adding new engines.
 
 <table>
 <tr>
@@ -27,12 +27,12 @@ pip install -e .
 ocr-compare view your_image.png
 ```
 
-This runs both OCR engines and opens a viewer where you can:
-- **Arrow keys**: flip between engines (Tesseract vs EasyOCR)
+This runs all available OCR engines and opens a viewer where you can:
+- **Arrow keys**: flip between engines
 - **I**: toggle between the original image and a "text map" showing what the engine extracted
 - **Q**: quit
 
-That's it. One command to see how two OCR engines compare on your document.
+That's it. One command to see how your OCR engines compare on a document.
 
 ## Other Ways to Use It
 
@@ -48,7 +48,7 @@ ocr-compare compare image.png --show-text
 # Side-by-side comparison
 ocr-compare compare image.png --mode side_by_side -o comparison.png
 
-# Overlay (blue = Tesseract, green = EasyOCR)
+# Overlay (each engine gets a distinct color)
 ocr-compare compare image.png --mode overlay -o comparison.png
 
 # Diff view (highlights disagreements between engines)
@@ -80,7 +80,7 @@ ocr-compare engines
 
 **Python packages** (installed automatically): Pillow, numpy, pytesseract, easyocr
 
-**System dependency** -- Tesseract must be installed separately:
+**System dependency** -- Tesseract requires a separate install:
 ```bash
 # macOS
 brew install tesseract
@@ -88,6 +88,8 @@ brew install tesseract
 # Ubuntu/Debian
 sudo apt install tesseract-ocr
 ```
+
+Use `ocr-compare engines` to see which engines are available on your system. You can select a subset with `--engines`, e.g. `--engines tesseract`.
 
 For development/testing: `pip install -e ".[dev]"`
 
