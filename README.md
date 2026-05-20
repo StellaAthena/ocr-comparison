@@ -114,4 +114,4 @@ See `examples/` for more usage patterns including batch processing and ground tr
 
 ## License
 
-MIT
+Apache 2.0
