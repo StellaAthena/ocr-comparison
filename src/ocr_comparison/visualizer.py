@@ -417,27 +417,15 @@ class OCRVisualizer:
                 width=1,
             )
 
-            # Auto-size font to fit within the bounding box
-            font_size = int(bbox.height * 0.7)
-            if font_size < 6:
-                continue
+            # Set font size based on bounding box height to match original
+            # document's text size (0.75 factor accounts for line spacing/descenders)
+            font_size = max(6, int(bbox.height * 0.75))
 
             font = self._get_font_for_size(font_size)
-            text_bbox = draw.textbbox((0, 0), word.text, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
 
-            # Shrink if text is wider than box
-            if text_width > bbox.width and text_width > 0:
-                font_size = int(font_size * bbox.width / text_width)
-                if font_size < 6:
-                    continue
-                font = self._get_font_for_size(font_size)
-
-            # Center text vertically in box, left-align with small padding
-            text_bbox = draw.textbbox((0, 0), word.text, font=font)
-            text_height = text_bbox[3] - text_bbox[1]
-            text_x = bbox.x + 1
-            text_y = bbox.y + (bbox.height - text_height) // 2
+            # Position at top-left of bounding box to match original location
+            text_x = bbox.x
+            text_y = bbox.y
 
             draw.text(
                 (text_x, text_y),
