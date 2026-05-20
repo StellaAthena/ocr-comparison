@@ -38,6 +38,7 @@ Thumbs.db
 # Project specific
 outputs/
 images/*.png
+!images/viewer_demo.png
 !images/.gitkeep
 
 # Test artifacts
