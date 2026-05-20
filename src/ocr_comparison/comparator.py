@@ -154,9 +154,14 @@ class OCRComparator:
                 for img in text_maps:
                     result_image.paste(img, (x_offset, 0))
                     x_offset += img.width
+        elif mode == 'margin':
+            result_image = self.visualizer.margin_view(
+                image_path, list(results.values())[0],
+                list(results.keys())[0]
+            )
         else:
             raise ValueError(
-                f"Unknown mode: {mode}. Use 'overlay', 'side_by_side', 'diff', or 'textmap'"
+                f"Unknown mode: {mode}. Use 'overlay', 'side_by_side', 'diff', 'textmap', or 'margin'"
             )
 
         # Save if output path provided

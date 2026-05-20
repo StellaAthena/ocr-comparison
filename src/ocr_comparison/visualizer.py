@@ -1,5 +1,6 @@
 """Visualization tools for OCR comparison results."""
 
+import textwrap
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -436,6 +437,196 @@ class OCRVisualizer:
 
         return text_map_img
 
+    def margin_view(
+        self,
+        image: Union[str, Path, Image.Image],
+        result: OCRResult,
+        engine_name: Optional[str] = None,
+        margin_width: int = 350,
+        max_margin_width: int = 800,
+        margin_font_size: int = 13,
+        line_grouping_threshold: int = 10
+    ) -> Image.Image:
+        """Create a margin-annotated visualization of OCR results.
+
+        Draws bounding box outlines on the original image and places
+        extracted text in a right margin, connected by thin leader lines.
+        Words on the same horizontal line are grouped into a single
+        margin annotation. The margin auto-expands to fit text, and
+        wraps lines that exceed max_margin_width.
+        """
+        if isinstance(image, (str, Path)):
+            img = Image.open(image).convert('RGBA')
+        else:
+            img = image.convert('RGBA')
+
+        name = engine_name or result.engine_name
+        colors = self._get_engine_colors(name)
+
+        margin_font = self._get_font_for_size(margin_font_size)
+
+        words = [w for w in result.words if w.confidence >= self.min_confidence]
+        lines = self._group_words_into_lines(words, line_grouping_threshold)
+        lines.sort(key=lambda line: min(w.bbox.y for w in line))
+
+        margin_padding = 20
+        margin_x_offset = 10
+        line_height = margin_font_size + 6
+        margin_labels = []
+
+        for line_words in lines:
+            line_words.sort(key=lambda w: w.bbox.x)
+            line_text = " ".join(w.text for w in line_words)
+            if self.show_confidence:
+                avg_conf = sum(w.confidence for w in line_words) / len(line_words)
+                line_text += f" ({avg_conf:.0%})"
+
+            min_x = min(w.bbox.x for w in line_words)
+            min_y = min(w.bbox.y for w in line_words)
+            max_x2 = max(w.bbox.x2 for w in line_words)
+            max_y2 = max(w.bbox.y2 for w in line_words)
+            center_y = (min_y + max_y2) // 2
+
+            margin_labels.append({
+                'desired_y': center_y - margin_font_size // 2,
+                'text': line_text,
+                'leader_start_x': max_x2,
+                'leader_start_y': center_y,
+                'words': line_words,
+            })
+
+        # Auto-size margin to fit longest text
+        tmp_img = Image.new('RGBA', (1, 1))
+        tmp_draw = ImageDraw.Draw(tmp_img)
+
+        max_text_width = 0
+        for label in margin_labels:
+            bbox = tmp_draw.textbbox((0, 0), label['text'], font=margin_font)
+            max_text_width = max(max_text_width, bbox[2] - bbox[0])
+
+        required_width = max_text_width + margin_x_offset + margin_padding
+        actual_margin_width = max(margin_width, required_width)
+
+        if actual_margin_width > max_margin_width:
+            actual_margin_width = max_margin_width
+            usable_width = actual_margin_width - margin_x_offset - margin_padding
+            self._wrap_margin_labels(margin_labels, margin_font, tmp_draw, usable_width)
+
+        # Create canvas
+        new_width = img.width + actual_margin_width
+        canvas = Image.new('RGBA', (new_width, img.height), (245, 245, 245, 255))
+        canvas.paste(img, (0, 0))
+
+        draw = ImageDraw.Draw(canvas)
+        draw.line(
+            [(img.width, 0), (img.width, img.height)],
+            fill=(200, 200, 200, 255), width=1
+        )
+
+        margin_x = img.width + margin_x_offset
+
+        # Resolve overlaps
+        for label in margin_labels:
+            label_lines = label['text'].count('\n') + 1
+            label['height'] = label_lines * line_height
+        self._resolve_margin_overlaps_variable(margin_labels, img.height)
+
+        # Draw
+        for label in margin_labels:
+            actual_y = label['actual_y']
+
+            for word in label['words']:
+                bbox = word.bbox
+                draw.rectangle(
+                    [(bbox.x, bbox.y), (bbox.x2, bbox.y2)],
+                    outline=(200, 200, 200), width=1
+                )
+
+            leader_color = colors['box'] + (100,) if len(colors['box']) == 3 else colors['box']
+            leader_start_x = label['leader_start_x']
+            leader_start_y = label['leader_start_y']
+            margin_text_y = actual_y + margin_font_size // 2
+
+            mid_x = img.width + 3
+            draw.line(
+                [(leader_start_x + 2, leader_start_y), (mid_x, leader_start_y)],
+                fill=leader_color, width=1
+            )
+            if abs(leader_start_y - margin_text_y) > 1:
+                draw.line(
+                    [(mid_x, leader_start_y), (mid_x, margin_text_y)],
+                    fill=leader_color, width=1
+                )
+            draw.line(
+                [(mid_x, margin_text_y), (margin_x - 2, margin_text_y)],
+                fill=leader_color, width=1
+            )
+
+            text_fill = colors['text'] + (255,) if len(colors['text']) == 3 else colors['text']
+            draw.text((margin_x, actual_y), label['text'], fill=text_fill, font=margin_font)
+
+        return canvas.convert('RGB')
+
+    def _group_words_into_lines(
+        self, words: List[OCRWord], threshold: int = 10
+    ) -> List[List[OCRWord]]:
+        """Group words into lines based on vertical proximity."""
+        if not words:
+            return []
+        sorted_words = sorted(words, key=lambda w: w.bbox.center[1])
+        lines = []
+        current_line = [sorted_words[0]]
+        for word in sorted_words[1:]:
+            prev_center_y = sum(w.bbox.center[1] for w in current_line) / len(current_line)
+            if abs(word.bbox.center[1] - prev_center_y) <= threshold:
+                current_line.append(word)
+            else:
+                lines.append(current_line)
+                current_line = [word]
+        lines.append(current_line)
+        return lines
+
+    def _wrap_margin_labels(self, labels, font, draw, max_width):
+        """Wrap margin label text to fit within max_width pixels."""
+        for label in labels:
+            text = label['text']
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_w = bbox[2] - bbox[0]
+            if text_w <= max_width:
+                continue
+            if len(text) > 0:
+                avg_char_w = text_w / len(text)
+                chars_per_line = max(1, int(max_width / avg_char_w))
+            else:
+                continue
+            wrapped = textwrap.fill(text, width=chars_per_line)
+            for wrapped_line in wrapped.split('\n'):
+                lbbox = draw.textbbox((0, 0), wrapped_line, font=font)
+                if lbbox[2] - lbbox[0] > max_width and chars_per_line > 5:
+                    chars_per_line = max(5, chars_per_line - 2)
+                    wrapped = textwrap.fill(text, width=chars_per_line)
+                    break
+            label['text'] = wrapped
+
+    def _resolve_margin_overlaps_variable(self, labels, image_height):
+        """Resolve vertical overlaps for labels with variable heights."""
+        if not labels:
+            return
+        for label in labels:
+            label['actual_y'] = max(0, label['desired_y'])
+        for i in range(1, len(labels)):
+            prev_bottom = labels[i - 1]['actual_y'] + labels[i - 1]['height']
+            if labels[i]['actual_y'] < prev_bottom:
+                labels[i]['actual_y'] = prev_bottom
+        if labels:
+            last = labels[-1]
+            if last['actual_y'] + last['height'] > image_height:
+                last['actual_y'] = max(0, image_height - last['height'])
+                for i in range(len(labels) - 2, -1, -1):
+                    next_top = labels[i + 1]['actual_y']
+                    if labels[i]['actual_y'] + labels[i]['height'] > next_top:
+                        labels[i]['actual_y'] = max(0, next_top - labels[i]['height'])
+
     def create_legend(
         self,
         engine_names: List[str],
@@ -532,21 +723,21 @@ def save_individual_images(
     results: Dict[str, OCRResult],
     output_dir: str,
     base_name: str = None,
+    mode: str = 'textmap',
     **kwargs
 ) -> List[str]:
     """Save separate visualization images for each OCR engine.
 
     Creates two images per engine:
     - One with bounding box outlines on the original image
-    - One text map (extracted text on blank background)
-
-    These can be toggled in the viewer with 'I' key.
+    - One alternate view (text map or margin) toggled with 'I' key
 
     Args:
         image_path: Path to input image
         results: Dictionary mapping engine names to OCR results
         output_dir: Directory to save output images
         base_name: Base filename (default: derived from input)
+        mode: Alternate view mode ('textmap' or 'margin')
         **kwargs: Additional arguments for OCRVisualizer
 
     Returns:
@@ -562,12 +753,13 @@ def save_individual_images(
         base_name = Path(image_path).stem
 
     saved_paths = []
-    textmap_paths = []
+    alt_paths = []
+    alt_suffix = '_margin' if mode == 'margin' else '_textmap'
 
     for engine_name, result in results.items():
         colors = visualizer._get_engine_colors(engine_name)
 
-        # Original image with bounding box outlines only (no fills, no text labels)
+        # Original image with bounding box outlines only
         img = Image.open(image_path).convert('RGBA')
         overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
         draw_overlay = ImageDraw.Draw(overlay)
@@ -588,19 +780,22 @@ def save_individual_images(
         labeled_boxes.save(output_path)
         saved_paths.append(str(output_path))
 
-        # Text map version
-        img_textmap = visualizer.text_map(image_path, result, engine_name)
-        labeled_textmap = _add_label_bar(img_textmap, engine_name, colors)
-        textmap_path = output_dir / f"{base_name}_{engine_name}_textmap.png"
-        labeled_textmap.save(textmap_path)
-        textmap_paths.append(str(textmap_path))
+        # Alternate view
+        if mode == 'margin':
+            img_alt = visualizer.margin_view(image_path, result, engine_name)
+        else:
+            img_alt = visualizer.text_map(image_path, result, engine_name)
+        labeled_alt = _add_label_bar(img_alt, engine_name, colors)
+        alt_path = output_dir / f"{base_name}_{engine_name}{alt_suffix}.png"
+        labeled_alt.save(alt_path)
+        alt_paths.append(str(alt_path))
 
     # Save manifest file for the viewer
     manifest_path = output_dir / f"{base_name}_manifest.txt"
     with open(manifest_path, 'w') as f:
-        f.write("# Format: boxes_path,textmap_path\n")
-        for boxes_path, textmap_path in zip(saved_paths, textmap_paths):
-            f.write(f"{boxes_path},{textmap_path}\n")
+        f.write(f"# Format: boxes_path,alt_path\n")
+        for boxes_path, alt_path in zip(saved_paths, alt_paths):
+            f.write(f"{boxes_path},{alt_path}\n")
 
     return saved_paths
 
@@ -679,11 +874,16 @@ def create_flip_viewer(image_paths: List[str], title: str = "OCR Comparison View
                     self.image_pairs.append((boxes_path, textmap_path))
                     self.has_textmap_versions = True
                 else:
-                    # Single path - check if textmap version exists
+                    # Single path - check if alt version exists (textmap or margin)
                     p = Path(path)
-                    textmap_path = p.parent / f"{p.stem}_textmap{p.suffix}"
-                    if textmap_path.exists():
-                        self.image_pairs.append((path, str(textmap_path)))
+                    alt_path = None
+                    for suffix in ('_textmap', '_margin'):
+                        candidate = p.parent / f"{p.stem}{suffix}{p.suffix}"
+                        if candidate.exists():
+                            alt_path = str(candidate)
+                            break
+                    if alt_path:
+                        self.image_pairs.append((path, alt_path))
                         self.has_textmap_versions = True
                     else:
                         self.image_pairs.append((path, None))

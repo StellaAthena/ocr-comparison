@@ -51,13 +51,29 @@ def cmd_compare(args):
 
     # Generate visualization if output specified
     if args.output:
-        comparator.visualize_overlay(
-            image_path,
-            results,
-            mode=args.mode,
-            output_path=args.output
-        )
-        print(f"\nVisualization saved: {args.output}")
+        if args.mode == 'margin':
+            from .visualizer import save_individual_images, create_flip_viewer
+            output_dir = Path(args.output).parent / f"{image_path.stem}_margin"
+            saved_paths = save_individual_images(
+                str(image_path), results, str(output_dir), mode='margin'
+            )
+            print(f"\nSaved {len(saved_paths)} images to: {output_dir}/")
+            for path in saved_paths:
+                print(f"  - {Path(path).name}")
+            print("\nLaunching viewer...")
+            print("Controls: \u2190 \u2192 to switch engines, I to toggle original/margin, Q to quit")
+            try:
+                create_flip_viewer(saved_paths, title=f"OCR Comparison (margin) - {image_path.name}")
+            except Exception as e:
+                print(f"Error launching viewer: {e}", file=sys.stderr)
+        else:
+            comparator.visualize_overlay(
+                image_path,
+                results,
+                mode=args.mode,
+                output_path=args.output
+            )
+            print(f"\nVisualization saved: {args.output}")
 
     return 0
 
@@ -246,10 +262,10 @@ def cmd_view(args):
                 image_paths = [line.strip() for line in f
                               if line.strip() and not line.startswith('#')]
         else:
-            # Just find PNG files (exclude _textmap versions, viewer will find them)
+            # Just find PNG files (exclude alt versions, viewer will find them)
             all_pngs = sorted(input_path.glob("*.png"))
             image_paths = [str(p) for p in all_pngs
-                          if '_textmap' not in p.stem]
+                          if '_textmap' not in p.stem and '_margin' not in p.stem]
     elif input_path.is_file():
         if input_path.suffix == '.txt':
             # Manifest file
@@ -329,7 +345,7 @@ def main():
     p_compare.add_argument('image', help='Image file to process')
     p_compare.add_argument('--output', '-o', help='Save visualization to file')
     p_compare.add_argument('--mode', '-m', default='overlay',
-                           choices=['overlay', 'side_by_side', 'diff', 'textmap'],
+                           choices=['overlay', 'side_by_side', 'diff', 'textmap', 'margin'],
                            help='Visualization mode (default: overlay)')
     p_compare.add_argument('--ground-truth', '-g', help='Ground truth text for accuracy')
     p_compare.add_argument('--show-text', '-t', action='store_true',
@@ -344,7 +360,7 @@ def main():
     p_vis.add_argument('image', help='Image file to process')
     p_vis.add_argument('--output', '-o', help='Output file path')
     p_vis.add_argument('--mode', '-m', default='overlay',
-                       choices=['overlay', 'side_by_side', 'diff', 'textmap'],
+                       choices=['overlay', 'side_by_side', 'diff', 'textmap', 'margin'],
                        help='Visualization mode')
     p_vis.add_argument('--show-confidence', action='store_true',
                        help='Show confidence scores')
@@ -366,7 +382,7 @@ def main():
     p_batch.add_argument('input', help='Image file or directory')
     p_batch.add_argument('--output-dir', '-o', help='Output directory')
     p_batch.add_argument('--mode', '-m', default='overlay',
-                         choices=['overlay', 'side_by_side', 'diff', 'textmap'])
+                         choices=['overlay', 'side_by_side', 'diff', 'textmap', 'margin'])
     p_batch.add_argument('--recursive', '-r', action='store_true',
                          help='Search directories recursively')
     p_batch.set_defaults(func=cmd_batch)
