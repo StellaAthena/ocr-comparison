@@ -417,18 +417,18 @@ class OCRVisualizer:
                 width=1,
             )
 
-            # Set font size based on bounding box height to match original
-            # document's text size (0.75 factor accounts for line spacing/descenders)
-            font_size = max(6, int(bbox.height * 0.75))
-
+            font_size = max(6, int(bbox.height * 1.0))
             font = self._get_font_for_size(font_size)
 
-            # Position at top-left of bounding box to match original location
-            text_x = bbox.x
-            text_y = bbox.y
+            # Shrink font if text overflows the bounding box width
+            text_bbox = draw.textbbox((0, 0), word.text, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
+            if text_width > bbox.width and bbox.width > 0:
+                font_size = max(6, int(font_size * bbox.width / text_width))
+                font = self._get_font_for_size(font_size)
 
             draw.text(
-                (text_x, text_y),
+                (bbox.x, bbox.y),
                 word.text,
                 fill=colors['text'],
                 font=font,
@@ -576,11 +576,11 @@ def save_individual_images(
             if word.confidence < visualizer.min_confidence:
                 continue
             bbox = word.bbox
-            for i in range(visualizer.box_thickness):
-                draw_overlay.rectangle(
-                    [(bbox.x - i, bbox.y - i), (bbox.x2 + i, bbox.y2 + i)],
-                    outline=colors['box']
-                )
+            draw_overlay.rectangle(
+                [(bbox.x, bbox.y), (bbox.x2, bbox.y2)],
+                outline=(200, 200, 200),
+                width=1
+            )
 
         img_with_boxes = Image.alpha_composite(img, overlay).convert('RGB')
         labeled_boxes = _add_label_bar(img_with_boxes, engine_name, colors)
