@@ -354,6 +354,100 @@ class OCRVisualizer:
             font=font
         )
 
+    def _get_font_for_size(self, size: int) -> ImageFont.FreeTypeFont:
+        """Get a font at a specific size."""
+        try:
+            return ImageFont.truetype(
+                "/System/Library/Fonts/Helvetica.ttc", size
+            )
+        except (IOError, OSError):
+            try:
+                return ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size
+                )
+            except (IOError, OSError):
+                return ImageFont.load_default()
+
+    def text_map(
+        self,
+        image: Union[str, Path, Image.Image],
+        result: OCRResult,
+        engine_name: Optional[str] = None,
+        background_color: Tuple[int, int, int] = (245, 245, 245),
+    ) -> Image.Image:
+        """Create a text map view: extracted text rendered on a blank background.
+
+        Each detected word is drawn inside its bounding box region, with text
+        auto-sized to fit. Areas with no detections remain blank, creating a
+        skeleton of what the OCR engine saw.
+
+        Args:
+            image: Image path or PIL Image (used only for dimensions)
+            result: OCR result to render
+            engine_name: Override engine name for colors
+            background_color: RGB background color
+
+        Returns:
+            PIL Image with text map
+        """
+        if isinstance(image, (str, Path)):
+            img = Image.open(image)
+        else:
+            img = image
+        width, height = img.size
+
+        text_map_img = Image.new('RGB', (width, height), background_color)
+        draw = ImageDraw.Draw(text_map_img)
+
+        name = engine_name or result.engine_name
+        colors = self._get_engine_colors(name)
+
+        for word in result.words:
+            if word.confidence < self.min_confidence:
+                continue
+
+            bbox = word.bbox
+            if bbox.width < 2 or bbox.height < 2:
+                continue
+
+            # Draw thin gray box outline
+            draw.rectangle(
+                [(bbox.x, bbox.y), (bbox.x2, bbox.y2)],
+                outline=(200, 200, 200),
+                width=1,
+            )
+
+            # Auto-size font to fit within the bounding box
+            font_size = int(bbox.height * 0.7)
+            if font_size < 6:
+                continue
+
+            font = self._get_font_for_size(font_size)
+            text_bbox = draw.textbbox((0, 0), word.text, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
+
+            # Shrink if text is wider than box
+            if text_width > bbox.width and text_width > 0:
+                font_size = int(font_size * bbox.width / text_width)
+                if font_size < 6:
+                    continue
+                font = self._get_font_for_size(font_size)
+
+            # Center text vertically in box, left-align with small padding
+            text_bbox = draw.textbbox((0, 0), word.text, font=font)
+            text_height = text_bbox[3] - text_bbox[1]
+            text_x = bbox.x + 1
+            text_y = bbox.y + (bbox.height - text_height) // 2
+
+            draw.text(
+                (text_x, text_y),
+                word.text,
+                fill=colors['text'],
+                font=font,
+            )
+
+        return text_map_img
+
     def create_legend(
         self,
         engine_names: List[str],
@@ -421,8 +515,23 @@ def visualize_overlay(
         result = visualizer.side_by_side(image_path, results)
     elif mode == 'diff':
         result = visualizer.diff_view(image_path, results)
+    elif mode == 'textmap':
+        # Create side-by-side text maps for all engines
+        maps = []
+        for engine_name, engine_result in results.items():
+            maps.append(visualizer.text_map(image_path, engine_result, engine_name))
+        if len(maps) == 1:
+            result = maps[0]
+        else:
+            total_width = sum(m.width for m in maps)
+            max_height = max(m.height for m in maps)
+            result = Image.new('RGB', (total_width, max_height), (255, 255, 255))
+            x_offset = 0
+            for m in maps:
+                result.paste(m, (x_offset, 0))
+                x_offset += m.width
     else:
-        raise ValueError(f"Unknown mode: {mode}. Use 'overlay', 'side_by_side', or 'diff'")
+        raise ValueError(f"Unknown mode: {mode}. Use 'overlay', 'side_by_side', 'diff', or 'textmap'")
 
     if output_path:
         result.save(output_path)
@@ -466,6 +575,7 @@ def save_individual_images(
 
     saved_paths = []
     clean_paths = []
+    textmap_paths = []
 
     for engine_name, result in results.items():
         colors = visualizer._get_engine_colors(engine_name)
@@ -484,12 +594,19 @@ def save_individual_images(
         labeled_clean.save(clean_path)
         clean_paths.append(str(clean_path))
 
-    # Save manifest file for the viewer (includes both versions)
+        # Text map version
+        img_textmap = visualizer.text_map(image_path, result, engine_name)
+        labeled_textmap = _add_label_bar(img_textmap, engine_name, colors)
+        textmap_path = output_dir / f"{base_name}_{engine_name}_textmap.png"
+        labeled_textmap.save(textmap_path)
+        textmap_paths.append(str(textmap_path))
+
+    # Save manifest file for the viewer (includes all three versions)
     manifest_path = output_dir / f"{base_name}_manifest.txt"
     with open(manifest_path, 'w') as f:
-        f.write("# Format: boxes_image,clean_image\n")
-        for boxes_path, clean_path in zip(saved_paths, clean_paths):
-            f.write(f"{boxes_path},{clean_path}\n")
+        f.write("# Format: boxes_image,clean_image,textmap_image\n")
+        for boxes_path, clean_path, textmap_path in zip(saved_paths, clean_paths, textmap_paths):
+            f.write(f"{boxes_path},{clean_path},{textmap_path}\n")
 
     return saved_paths
 
@@ -554,42 +671,63 @@ def create_flip_viewer(image_paths: List[str], title: str = "OCR Comparison View
     from tkinter import ttk
 
     class FlipViewer:
+        # View mode constants
+        VIEW_FILLS = 0
+        VIEW_BOXES = 1
+        VIEW_TEXTMAP = 2
+        VIEW_LABELS = ["FILLS", "BOXES", "TEXT MAP"]
+
         def __init__(self, paths: List[str], title: str):
-            # Parse paths - check if we have pairs (boxes,clean) or single paths
-            self.image_pairs = []  # List of (boxes_path, clean_path) tuples
+            # Parse paths - check if we have tuples (boxes,clean,textmap) or single paths
+            self.image_tuples = []  # List of (boxes_path, clean_path, textmap_path) tuples
             self.has_clean_versions = False
+            self.has_textmap_versions = False
 
             for path in paths:
                 if ',' in path:
-                    # Pair format: boxes_path,clean_path
-                    boxes_path, clean_path = path.split(',', 1)
-                    self.image_pairs.append((boxes_path.strip(), clean_path.strip()))
-                    self.has_clean_versions = True
+                    parts = [p.strip() for p in path.split(',')]
+                    boxes_path = parts[0]
+                    clean_path = parts[1] if len(parts) > 1 else None
+                    textmap_path = parts[2] if len(parts) > 2 else None
+                    self.image_tuples.append((boxes_path, clean_path, textmap_path))
+                    if clean_path:
+                        self.has_clean_versions = True
+                    if textmap_path:
+                        self.has_textmap_versions = True
                 else:
-                    # Single path - check if clean version exists
+                    # Single path - check if clean/textmap versions exist
                     p = Path(path)
                     clean_path = p.parent / f"{p.stem}_clean{p.suffix}"
-                    if clean_path.exists():
-                        self.image_pairs.append((path, str(clean_path)))
+                    textmap_path = p.parent / f"{p.stem}_textmap{p.suffix}"
+                    clean_str = str(clean_path) if clean_path.exists() else None
+                    textmap_str = str(textmap_path) if textmap_path.exists() else None
+                    self.image_tuples.append((path, clean_str, textmap_str))
+                    if clean_str:
                         self.has_clean_versions = True
-                    else:
-                        self.image_pairs.append((path, None))
+                    if textmap_str:
+                        self.has_textmap_versions = True
 
             self.current_index = 0
-            self.show_boxes = True  # Toggle state
+            self.view_mode = self.VIEW_FILLS  # Current view mode
 
             # Load all images
             self.boxes_images = []
             self.clean_images = []
+            self.textmap_images = []
             self.boxes_photos = []
             self.clean_photos = []
+            self.textmap_photos = []
 
-            for boxes_path, clean_path in self.image_pairs:
+            for boxes_path, clean_path, textmap_path in self.image_tuples:
                 self.boxes_images.append(Image.open(boxes_path))
                 if clean_path and Path(clean_path).exists():
                     self.clean_images.append(Image.open(clean_path))
                 else:
                     self.clean_images.append(None)
+                if textmap_path and Path(textmap_path).exists():
+                    self.textmap_images.append(Image.open(textmap_path))
+                else:
+                    self.textmap_images.append(None)
 
             # Create window
             self.root = tk.Tk()
@@ -636,6 +774,20 @@ def create_flip_viewer(image_paths: List[str], title: str = "OCR Comparison View
                 else:
                     self.clean_photos.append(None)
 
+                # Also render textmap version if available
+                textmap_img = self.textmap_images[i]
+                if textmap_img:
+                    if scale < 1.0:
+                        display_textmap = textmap_img.resize(
+                            (self.display_width, self.display_height),
+                            Image.Resampling.LANCZOS
+                        )
+                    else:
+                        display_textmap = textmap_img
+                    self.textmap_photos.append(ImageTk.PhotoImage(display_textmap))
+                else:
+                    self.textmap_photos.append(None)
+
             # Create main frame
             self.main_frame = ttk.Frame(self.root)
             self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -663,8 +815,8 @@ def create_flip_viewer(image_paths: List[str], title: str = "OCR Comparison View
             )
             info_label.pack()
 
-            help_parts = ["← → to switch engines", "I to toggle boxes"]
-            if len(self.image_pairs) > 2:
+            help_parts = ["← → to switch engines", "I to cycle views"]
+            if len(self.image_tuples) > 2:
                 help_parts.append("1-9 to jump")
             help_parts.append("Q to quit")
             help_text = "  |  ".join(help_parts)
@@ -696,24 +848,27 @@ def create_flip_viewer(image_paths: List[str], title: str = "OCR Comparison View
             self.show_current()
 
         def update_label(self):
-            boxes_path = self.image_pairs[self.current_index][0]
+            boxes_path = self.image_tuples[self.current_index][0]
             path = Path(boxes_path)
             # Extract engine name from filename (assumes format: base_engine.png)
             parts = path.stem.rsplit('_', 1)
             engine = parts[-1] if len(parts) > 1 else path.stem
 
-            box_status = "BOXES ON" if self.show_boxes else "BOXES OFF"
+            view_label = self.VIEW_LABELS[self.view_mode]
             self.label_var.set(
-                f"{engine.upper()}  ({self.current_index + 1} / {len(self.image_pairs)})  [{box_status}]"
+                f"{engine.upper()}  ({self.current_index + 1} / {len(self.image_tuples)})  [{view_label}]"
             )
 
         def show_current(self):
             self.canvas.delete("all")
 
-            if self.show_boxes or self.clean_photos[self.current_index] is None:
-                photo = self.boxes_photos[self.current_index]
+            idx = self.current_index
+            if self.view_mode == self.VIEW_BOXES and self.clean_photos[idx] is not None:
+                photo = self.clean_photos[idx]
+            elif self.view_mode == self.VIEW_TEXTMAP and self.textmap_photos[idx] is not None:
+                photo = self.textmap_photos[idx]
             else:
-                photo = self.clean_photos[self.current_index]
+                photo = self.boxes_photos[idx]
 
             self.canvas.create_image(
                 self.display_width // 2,
@@ -724,20 +879,30 @@ def create_flip_viewer(image_paths: List[str], title: str = "OCR Comparison View
             self.update_label()
 
         def toggle_boxes(self, event=None):
+            # Cycle through available views: FILLS -> BOXES -> TEXT MAP -> FILLS
+            available = [self.VIEW_FILLS]
             if self.has_clean_versions:
-                self.show_boxes = not self.show_boxes
-                self.show_current()
+                available.append(self.VIEW_BOXES)
+            if self.has_textmap_versions:
+                available.append(self.VIEW_TEXTMAP)
+
+            if len(available) <= 1:
+                return
+
+            current_pos = available.index(self.view_mode) if self.view_mode in available else 0
+            self.view_mode = available[(current_pos + 1) % len(available)]
+            self.show_current()
 
         def next_image(self, event=None):
-            self.current_index = (self.current_index + 1) % len(self.image_pairs)
+            self.current_index = (self.current_index + 1) % len(self.image_tuples)
             self.show_current()
 
         def prev_image(self, event=None):
-            self.current_index = (self.current_index - 1) % len(self.image_pairs)
+            self.current_index = (self.current_index - 1) % len(self.image_tuples)
             self.show_current()
 
         def jump_to(self, index: int):
-            if 0 <= index < len(self.image_pairs):
+            if 0 <= index < len(self.image_tuples):
                 self.current_index = index
                 self.show_current()
 

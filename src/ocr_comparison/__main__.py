@@ -248,7 +248,8 @@ def cmd_view(args):
         else:
             # Just find PNG files (exclude _clean versions, viewer will find them)
             all_pngs = sorted(input_path.glob("*.png"))
-            image_paths = [str(p) for p in all_pngs if '_clean' not in p.stem]
+            image_paths = [str(p) for p in all_pngs
+                          if '_clean' not in p.stem and '_textmap' not in p.stem]
     elif input_path.is_file():
         if input_path.suffix == '.txt':
             # Manifest file
@@ -328,7 +329,7 @@ def main():
     p_compare.add_argument('image', help='Image file to process')
     p_compare.add_argument('--output', '-o', help='Save visualization to file')
     p_compare.add_argument('--mode', '-m', default='overlay',
-                           choices=['overlay', 'side_by_side', 'diff'],
+                           choices=['overlay', 'side_by_side', 'diff', 'textmap'],
                            help='Visualization mode (default: overlay)')
     p_compare.add_argument('--ground-truth', '-g', help='Ground truth text for accuracy')
     p_compare.add_argument('--show-text', '-t', action='store_true',
@@ -343,7 +344,7 @@ def main():
     p_vis.add_argument('image', help='Image file to process')
     p_vis.add_argument('--output', '-o', help='Output file path')
     p_vis.add_argument('--mode', '-m', default='overlay',
-                       choices=['overlay', 'side_by_side', 'diff'],
+                       choices=['overlay', 'side_by_side', 'diff', 'textmap'],
                        help='Visualization mode')
     p_vis.add_argument('--show-confidence', action='store_true',
                        help='Show confidence scores')
@@ -365,7 +366,7 @@ def main():
     p_batch.add_argument('input', help='Image file or directory')
     p_batch.add_argument('--output-dir', '-o', help='Output directory')
     p_batch.add_argument('--mode', '-m', default='overlay',
-                         choices=['overlay', 'side_by_side', 'diff'])
+                         choices=['overlay', 'side_by_side', 'diff', 'textmap'])
     p_batch.add_argument('--recursive', '-r', action='store_true',
                          help='Search directories recursively')
     p_batch.set_defaults(func=cmd_batch)
