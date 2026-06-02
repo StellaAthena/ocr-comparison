@@ -2,6 +2,42 @@
 
 All commands are available via `ocr-compare` after installing with `pip install -e .`
 
+## Install & Verify (Windows PowerShell)
+
+```powershell
+cd .\ocr-comparison
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+
+# Verify Tesseract is available
+tesseract --version
+
+# Verify OCR engines recognized by this project
+ocr-compare engines
+```
+
+If `ocr-compare` is not recognized in your shell, use:
+
+```powershell
+python -m ocr_comparison engines
+```
+
+## Windows Troubleshooting
+
+- **Activation blocked (`Activate.ps1`)**
+  - Run:
+    ```powershell
+    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+    ```
+  - Then open a new PowerShell session and activate again.
+- **`tesseract` not recognized**
+  - Confirm `tesseract.exe` exists (commonly `C:\Program Files\Tesseract-OCR\tesseract.exe`).
+  - Add `C:\Program Files\Tesseract-OCR\` to your PATH and open a new terminal.
+  - Re-test with `tesseract --version`.
+- **`ocr-compare` not recognized**
+  - Ensure your venv is active, then run `python -m ocr_comparison ...` as a fallback.
+
 ## `ocr-compare view <input>`
 
 Launch the interactive viewer. This is the recommended way to compare engines.
