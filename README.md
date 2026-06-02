@@ -17,13 +17,36 @@ Compare OCR engines visually. Run multiple engines on the same image, then flip 
 
 ## Quick Start
 
-```bash
-# Install
-cd ocr_comparison
-brew install tesseract    # macOS (or: apt install tesseract-ocr)
+### Windows (PowerShell)
+
+```powershell
+# Install Python package
+cd ocr-comparison
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -e .
 
+# Install Tesseract OCR separately (Windows installer)
+# Then verify:
+tesseract --version
+ocr-compare engines
+
 # Launch the interactive viewer on any image
+ocr-compare view .\your_image.png
+```
+
+### macOS / Linux
+
+```bash
+cd ocr-comparison
+
+# Install Tesseract OCR system dependency
+# macOS:
+brew install tesseract
+# Ubuntu/Debian:
+sudo apt install tesseract-ocr
+
+pip install -e .
 ocr-compare view your_image.png
 ```
 
@@ -88,6 +111,29 @@ brew install tesseract
 # Ubuntu/Debian
 sudo apt install tesseract-ocr
 ```
+
+On Windows, install Tesseract via a Windows installer, then ensure:
+- `tesseract.exe` exists (commonly `C:\Program Files\Tesseract-OCR\tesseract.exe`)
+- `C:\Program Files\Tesseract-OCR\` is on your `PATH`
+- A new terminal is opened after PATH changes
+
+Verify installation:
+```powershell
+tesseract --version
+ocr-compare engines
+```
+
+### Windows Troubleshooting
+
+- If `.\.venv\Scripts\Activate.ps1` is blocked, allow local scripts:
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+  ```
+- If `tesseract` is not recognized, add `C:\Program Files\Tesseract-OCR\` to PATH and open a new terminal.
+- If `ocr-compare` is not recognized, use module form:
+  ```powershell
+  python -m ocr_comparison engines
+  ```
 
 Use `ocr-compare engines` to see which engines are available on your system. You can select a subset with `--engines`, e.g. `--engines tesseract`.
 
